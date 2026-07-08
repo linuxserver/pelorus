@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pelorus</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div id="app">
+  <!-- ═══ Setup View ═══ -->
+  <div id="setup-view">
+    <div class="setup-card">
+      <div class="logo">
+        <img src="/static/logo.svg" alt="Pelorus" class="logo-svg">
+        <h1>Pelorus</h1>
+        <p>AI navigator for Selkies-powered desktops</p>
+      </div>
+      <div class="form-group">
+        <label><i class="fas fa-tag"></i> Server Name</label>
+        <input id="setup-name" class="form-control" type="text" placeholder="My Server">
+      </div>
+      <div class="form-group">
+        <label><i class="fas fa-cloud"></i> Provider</label>
+        <select id="setup-provider" class="form-control">
+          <option value="ollama">Ollama</option>
+          <option value="gemini">Gemini</option>
+          <option value="openai">OpenAI Compatible</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label><i class="fas fa-link"></i> Endpoint URL</label>
+        <input id="setup-endpoint" class="form-control" type="text" placeholder="http://localhost:11434">
+      </div>
+      <div class="form-group">
+        <label><i class="fas fa-cube"></i> Model</label>
+        <div id="setup-model-container">
+          <input id="setup-model" class="form-control" type="text" placeholder="gemma4:12b">
+        </div>
+      </div>
+      <div class="form-group">
+        <label><i class="fas fa-key"></i> API Key <span style="color:#4a4e5a;font-weight:400;">(optional)</span></label>
+        <input id="setup-apikey" class="form-control" type="password" placeholder="sk-...">
+      </div>
+      <div class="form-group">
+        <label class="checkbox-label">
+          <input id="setup-vision" type="checkbox">
+          <span><i class="fas fa-eye"></i> This model supports vision</span>
+        </label>
+      </div>
+      <button id="setup-connect" class="btn btn-primary">
+        <i class="fas fa-plug"></i> Connect
+      </button>
+    </div>
+  </div>
+
+  <!-- ═══ Chat View ═══ -->
+  <div id="chat-view" class="hidden">
+    <div class="top-bar">
+      <div class="brand">
+        <img src="/static/logo.svg" alt="Pelorus" class="logo-svg-small">
+        <span>Pelorus</span>
+      </div>
+      <span class="server-badge">
+        <i class="fas fa-server"></i>
+        <select id="server-selector" class="server-dropdown"></select>
+        <span class="server-badge-model" id="server-badge-model"></span>
+      </span>
+      <div class="spacer"></div>
+      <div class="top-actions">
+        <button class="btn btn-ghost btn-sm" id="btn-settings" title="Settings">
+          <i class="fas fa-cog"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Session Tabs -->
+    <div class="tab-bar" id="tab-bar"></div>
+
+    <!-- Session panes container -->
+    <div id="session-container" class="flex-col flex-1"></div>
+
+    <!-- Input Bar -->
+    <div class="input-bar">
+      <div class="input-wrap">
+        <textarea id="chat-input" rows="1" placeholder="Type a message to control the computer…" disabled></textarea>
+        <button class="btn-stop hidden" id="btn-stop" title="Stop">
+          <i class="fas fa-stop"></i>
+        </button>
+        <button class="btn-send" id="btn-send" disabled>
+          <i class="fas fa-paper-plane"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ Settings Modal ═══ -->
+  <div class="modal-overlay" id="settings-modal">
+    <div class="modal modal-wide">
+      <h2><i class="fas fa-cog"></i> Settings</h2>
+
+      <!-- Tab navigation -->
+      <div class="settings-tabs">
+        <button class="settings-tab active" data-tab="servers"><i class="fas fa-server"></i> Server Connections</button>
+        <button class="settings-tab" data-tab="client"><i class="fas fa-sliders"></i> Client Settings</button>
+      </div>
+
+      <!-- Server Connections tab -->
+      <div class="settings-tab-content active" id="tab-servers">
+        <div id="server-list"></div>
+        <button class="btn btn-ghost btn-sm" id="btn-add-server" style="margin-top:12px;width:100%;">
+          <i class="fas fa-plus"></i> Add Server
+        </button>
+
+        <!-- Inline add/edit server form (hidden by default) -->
+        <div id="server-form" class="server-form hidden">
+          <h3 id="server-form-title" style="font-size:15px;margin-bottom:16px;">Add Server</h3>
+          <div class="form-group">
+            <label>Name</label>
+            <input id="sf-name" class="form-control" type="text" placeholder="My Server">
+          </div>
+          <div class="form-group">
+            <label>Provider</label>
+            <select id="sf-provider" class="form-control">
+              <option value="ollama">Ollama</option>
+              <option value="openai">OpenAI Compatible</option>
+              <option value="gemini">Gemini</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Endpoint URL</label>
+            <input id="sf-endpoint" class="form-control" type="text" placeholder="http://localhost:11434">
+          </div>
+          <div class="form-group">
+            <label>Default Model</label>
+            <div id="sf-model-container">
+              <input id="sf-model" class="form-control" type="text" placeholder="gemma4:12b">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>API Key <span style="color:#4a4e5a;font-weight:400;">(optional)</span></label>
+            <input id="sf-apikey" class="form-control" type="password" placeholder="sk-...">
+          </div>
+          <div class="form-group">
+            <label class="checkbox-label">
+              <input id="sf-vision" type="checkbox">
+              <span><i class="fas fa-eye"></i> This model supports vision</span>
+            </label>
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-ghost" id="sf-cancel">Cancel</button>
+            <button class="btn btn-primary" id="sf-save" style="width:auto;margin-top:0;">
+              <i class="fas fa-check"></i> Save Server
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Client Settings tab -->
+      <div class="settings-tab-content" id="tab-client">
+        <div class="form-group">
+          <label><i class="fas fa-align-left"></i> System Prompt Suffix</label>
+          <textarea id="settings-suffix" class="form-control" rows="3" placeholder="Extra instructions for the model…"></textarea>
+        </div>
+        <div class="form-group">
+          <label><i class="fas fa-repeat"></i> Max Steps</label>
+          <input id="settings-steps" class="form-control" type="number" min="1" max="50" value="20">
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" id="modal-close">Cancel</button>
+          <button class="btn btn-primary" id="modal-save" style="width:auto;margin-top:0;">
+            <i class="fas fa-check"></i> Save
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+
+<!-- ═══ Image Modal ═══ -->
+<div class="img-modal-overlay" id="img-modal">
+  <div class="img-modal-wrap">
+    <button class="img-modal-close"><i class="fas fa-times"></i></button>
+    <img id="img-modal-img" src="" alt="Full-size screenshot">
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
