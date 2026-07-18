@@ -19,5 +19,8 @@ dependencies = [
 where = ["."]
 include = ["src", "src.*"]
 
+[tool.setuptools.package-data]
+src = ["static/*"]
+
 [project.scripts]
 pelorus = "src.app:main"
