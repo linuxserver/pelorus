@@ -208,7 +208,7 @@ class TaskQueue:
 
     @property
     def is_done(self) -> bool:
-        return self.index >= len(self.tasks)
+        return len(self.tasks) > 0 and self.index >= len(self.tasks)
 
 
 class CreateTaskTool:
