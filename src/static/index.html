@@ -3,9 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<base href="./">
 <title>Pelorus</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous">
-<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="static/style.css">
 </head>
 <body>
 
@@ -14,7 +15,7 @@
   <div id="setup-view">
     <div class="setup-card">
       <div class="logo">
-        <img src="/static/logo.svg" alt="Pelorus" class="logo-svg">
+        <img src="static/logo.svg" alt="Pelorus" class="logo-svg">
         <h1>Pelorus</h1>
         <p>AI navigator for Selkies-powered desktops</p>
       </div>
@@ -60,7 +61,7 @@
   <div id="chat-view" class="hidden">
     <div class="top-bar">
       <div class="brand">
-        <img src="/static/logo.svg" alt="Pelorus" class="logo-svg-small">
+        <img src="static/logo.svg" alt="Pelorus" class="logo-svg-small">
         <span>Pelorus</span>
       </div>
       <span class="server-badge">
@@ -166,7 +167,7 @@
         </div>
         <div class="form-group">
           <label><i class="fas fa-repeat"></i> Max Steps</label>
-          <input id="settings-steps" class="form-control" type="number" min="1" max="50" value="20">
+          <input id="settings-steps" class="form-control" type="number" min="1" max="50" value="50">
         </div>
         <div class="modal-actions">
           <button class="btn btn-ghost" id="modal-close">Cancel</button>
@@ -189,6 +190,6 @@
   </div>
 </div>
 
-<script src="/static/app.js"></script>
+<script src="static/app.js"></script>
 </body>
 </html>

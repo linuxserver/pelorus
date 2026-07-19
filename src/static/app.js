@@ -84,7 +84,7 @@ chatInput.addEventListener("input", () => {
    ═══════════════════════════════════════════ */
 async function loadServers() {
   try {
-    const r = await fetch("/api/servers");
+    const r = await fetch("api/servers");
     const data = await r.json();
     servers = data.servers || [];
     const backendDefault = servers.find(s => s.default);
@@ -107,7 +107,7 @@ function getServer(id) { return servers.find(s => s.id === id); }
 function getDefaultServer() { return getServer(defaultServerId) || servers[0] || null; }
 
 async function addServer(data) {
-  const r = await fetch("/api/servers", {
+  const r = await fetch("api/servers", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ...data, default: servers.length === 0 }),
@@ -124,7 +124,7 @@ async function addServer(data) {
 }
 
 async function updateServer(id, data) {
-  const r = await fetch(`/api/servers/${id}`, {
+  const r = await fetch(`api/servers/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -139,7 +139,7 @@ async function updateServer(id, data) {
 async function deleteServer(id) {
   if (servers.length <= 1) { toast("Cannot delete the last server", "error"); return; }
   const wasDefault = defaultServerId === id;
-  await fetch(`/api/servers/${id}`, { method: "DELETE" });
+  await fetch(`api/servers/${id}`, { method: "DELETE" });
   servers = servers.filter(s => s.id !== id);
   if (wasDefault) {
     defaultServerId = servers[0].id;
@@ -218,7 +218,7 @@ function setupModelAutoFetch(prefix) {
       if (!endpoint) return;
 
       try {
-        const r = await fetch("/api/models/fetch", {
+        const r = await fetch("api/models/fetch", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ provider, endpoint, api_key: apiKey }),
@@ -257,7 +257,7 @@ function triggerModelFetch(prefix) {
    ═══════════════════════════════════════════ */
 async function populateSetupFromEnv() {
   try {
-    const r = await fetch("/api/env");
+    const r = await fetch("api/env");
     const env = await r.json();
     if (env.endpoint) $("#setup-endpoint").value = env.endpoint;
     if (env.model) $("#setup-model").value = env.model;
@@ -310,7 +310,7 @@ function openSettings() {
   renderServerList();
   const s = loadSettings() || {};
   $("#settings-suffix").value = s.system_prompt_suffix || "";
-  $("#settings-steps").value = s.max_steps || 20;
+  $("#settings-steps").value = s.max_steps || 50;
   settingsModal.classList.add("open");
 }
 
@@ -323,7 +323,7 @@ $("#modal-close").addEventListener("click", () => {
 $("#modal-save").addEventListener("click", () => {
   saveSettings({
     system_prompt_suffix: $("#settings-suffix").value,
-    max_steps: parseInt($("#settings-steps").value, 10) || 20,
+    max_steps: parseInt($("#settings-steps").value, 10) || 50,
   });
   settingsModal.classList.remove("open");
   hideServerForm();
@@ -561,7 +561,8 @@ function resetStream() {
 function connectWs() {
   if (ws) { ws.close(); }
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
-  ws = new WebSocket(`${proto}//${location.host}/ws`);
+  const wsBase = location.pathname.replace(/\/?$/, '/');
+  ws = new WebSocket(`${proto}//${location.host}${wsBase}ws`);
   ws.onopen = () => {};
   ws.onclose = () => { if (!busy) setTimeout(connectWs, 3000); };
   ws.onerror = () => {};
@@ -818,7 +819,7 @@ function sendMessage() {
     text: text,
     settings: {
       system_prompt_suffix: settings.system_prompt_suffix || "",
-      max_steps: settings.max_steps || 20,
+      max_steps: settings.max_steps || 50,
     },
   }));
 }

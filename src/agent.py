@@ -106,7 +106,7 @@ class RunRequest(BaseModel):
     model: str | None = None
     api_key: str | None = None
     vision: bool | None = None
-    max_steps: int = 15
+    max_steps: int = 50
     response_format: str = "default"
     stream: bool = False
 

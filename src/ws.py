@@ -33,7 +33,7 @@ async def _run_agent_ws(ws: WebSocket, config: dict, user_text: str, settings: d
     suffix = (settings.get("system_prompt_suffix") or "").strip()
     if suffix:
         system = f"{system} {suffix}"
-    max_steps = min(int(settings.get("max_steps", 20)), 50)
+    max_steps = min(int(settings.get("max_steps", 50)), 100)
 
     try:
         await ws.send_json({"type": "status", "message": "Taking initial screenshot\u2026"})
