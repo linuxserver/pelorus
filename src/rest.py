@@ -435,11 +435,14 @@ async def env_defaults():
     servers = _load_servers()
     if servers:
         s = _resolve_server(servers[0])
-        return JSONResponse({
+        resp = {
             "endpoint": s.get("endpoint", "http://localhost:11434"),
             "model": s.get("model", "gemma4:12b"),
             "provider": s.get("provider", "ollama"),
-        })
+        }
+        if s.get("id") == "svr_1aa2bfab16f3":
+            resp["show_opencode_badge"] = True
+        return JSONResponse(resp)
     return JSONResponse({
         "endpoint": os.getenv("PELORUS_ENDPOINT", "http://localhost:11434"),
         "model": os.getenv("PELORUS_MODEL", "gemma4:12b"),

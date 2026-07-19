@@ -194,6 +194,7 @@ serverSelector.addEventListener("change", () => {
   if (id && id !== defaultServerId) {
     setDefaultServer(id);
   }
+  updateOpencodeBadge();
 });
 
 /* ═══════════════════════════════════════════
@@ -460,6 +461,17 @@ $("#sf-save").addEventListener("click", async () => {
 /* ═══════════════════════════════════════════
    Chat Init
    ═══════════════════════════════════════════ */
+function updateOpencodeBadge() {
+  const badge = document.getElementById("opencode-badge");
+  if (!badge) return;
+  const svr = getDefaultServer();
+  if (svr && svr.id === "svr_1aa2bfab16f3") {
+    badge.classList.remove("hidden");
+  } else {
+    badge.classList.add("hidden");
+  }
+}
+
 async function initChat() {
   $("#setup-view").classList.add("hidden");
   $("#chat-view").classList.remove("hidden");
@@ -470,6 +482,7 @@ async function initChat() {
   btnSend.disabled = false;
   chatInput.focus();
 
+  updateOpencodeBadge();
   createSession();
   connectWs();
 }
