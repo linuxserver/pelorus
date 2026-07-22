@@ -419,6 +419,12 @@ function showServerForm(id) {
   }
 }
 
+$("#sf-provider").addEventListener("change", () => {
+  if (!editServerId && $("#sf-provider").value === "gemini") {
+    $("#sf-endpoint").value = "https://generativelanguage.googleapis.com";
+  }
+});
+
 function hideServerForm() {
   editServerId = null;
   const form = $("#server-form");
