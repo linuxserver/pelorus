@@ -8,8 +8,10 @@ from typing import Any
 import httpx
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from pydantic import BaseModel, Field
 
-from . import kwin_dbus
+from . import atspi
+from . import desktop
 from .agent import (
     SYSTEM_PROMPT,
     build_provider,
@@ -35,6 +37,63 @@ from .utils import (
 log = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+# ─── Desktop Integration Models ──────────────────────────────────────
+
+
+class ExploreResponse(BaseModel):
+    pid: int
+    tree: str | None = Field(None, description="Enriched AT-SPI accessibility tree with screen-absolute coordinates. Null when the window has no accessibility support.")
+    error: str | None = Field(None, description="Error message when AT-SPI data is unavailable. When present, a screenshot is typically included.")
+    screenshot: str | None = Field(None, description="Base64-encoded PNG screenshot of the window region. Present when AT-SPI is unavailable or when force_screenshot=true.")
+
+
+class DesktopScreenshotResponse(BaseModel):
+    data: str = Field(..., description="Base64-encoded PNG screenshot of the full desktop")
+
+
+class WindowScreenshotResponse(BaseModel):
+    pid: int
+    screenshot: str = Field(..., description="Base64-encoded PNG screenshot of the window's screen region")
+
+
+class ControlRequest(BaseModel):
+    action: str = Field(
+        ...,
+        description="The input action to perform",
+        json_schema_extra={
+            "enum": [
+                "left_click", "right_click", "double_click", "middle_click", "triple_click",
+                "mouse_move", "left_mouse_down", "left_mouse_up",
+                "left_click_drag", "scroll",
+                "key", "hold_key", "type",
+                "cursor_position", "wait", "screenshot", "zoom",
+            ]
+        },
+    )
+    coordinate: list[int] | None = Field(None, description="[x, y] screen position for click/move actions")
+    text: str | None = Field(None, description="Key name (e.g. 'Return', 'ctrl+a') for key/hold_key, or text to type")
+    start_coordinate: list[int] | None = Field(None, description="[x, y] drag start position for left_click_drag")
+    end_coordinate: list[int] | None = Field(None, description="[x, y] drag end position for left_click_drag")
+    scroll_direction: str | None = Field(None, description="Scroll direction: 'up', 'down', 'left', 'right'", json_schema_extra={"enum": ["up", "down", "left", "right"]})
+    scroll_amount: int | None = Field(None, description="Number of scroll units")
+    duration: float | None = Field(None, description="Duration in seconds for wait/hold_key actions")
+    region: list[int] | None = Field(None, description="[x1, y1, x2, y2] screen region for zoom capture")
+
+
+class CUResponse(BaseModel):
+    model_config = {"json_schema_extra": {"examples": [{"result": "ok"}, {"result": "ok", "data": "base64..."}]}}
+    result: str = Field(..., description="CU backend status")
+    data: str | None = Field(None, description="Base64 screenshot data, returned by screenshot/zoom actions")
+    text: str | None = Field(None, description="Text result for actions that return text")
+    error: str | None = Field(None, description="Error message if the action failed")
+    position: list[int] | None = Field(None, description="[x, y] cursor position, returned by cursor_position action")
+
+
+class CloseResponse(BaseModel):
+    ok: bool
+    pid: int
 
 
 # ─── Run Agent (programmatic) ──────────────────────────────────────────
@@ -452,12 +511,127 @@ async def env_defaults():
 
 @router.get("/api/windows")
 async def list_windows():
-    return {"windows": await kwin_dbus.list_windows()}
+    return {"windows": await desktop.list_windows()}
 
 
 @router.get("/api/state")
 async def desktop_state():
     return {"state": await _text_screenshot()}
+
+
+# ─── Low-Level Desktop Integration ───────────────────────────────────
+
+
+async def _capture_window_screenshot(pid: int) -> str | None:
+    try:
+        windows = await desktop.list_windows()
+    except Exception:
+        return None
+    pid_windows = [w for w in windows if w["pid"] == pid]
+    if not pid_windows:
+        return None
+    w = pid_windows[0]
+    sx, sy, sw, sh = w["x"], w["y"], w["width"], w["height"]
+    frame = atspi._get_frame_extents(pid)
+    if frame and frame[2] > 0 and frame[3] > 0:
+        fx, fy, fw, fh = frame
+        titlebar = w["height"] - fh
+        if titlebar < 0:
+            sx, sy = w["x"], w["y"]
+            sw, sh = fw, fh
+        else:
+            sx, sy = w["x"] + fx, w["y"] + titlebar
+            sw, sh = fw, fh
+    try:
+        resp = await _cu_action({"action": "zoom", "region": [sx, sy, sx + max(sw, 1), sy + max(sh, 1)]})
+        return resp.get("data")
+    except Exception:
+        return None
+
+
+@router.get(
+    "/api/desktop/explore/{pid}",
+    response_model=ExploreResponse,
+    summary="Explore window accessibility tree",
+    description="Returns the AT-SPI accessibility tree with screen-absolute coordinates. "
+    "If the window has no accessibility support (games, Electron apps, custom GL canvases), "
+    "a base64 PNG screenshot of the window region is returned automatically. "
+    "Use force_screenshot=true to always include a screenshot alongside the tree.",
+)
+async def explore_window(pid: int, force_screenshot: bool = False):
+    raw = await asyncio.to_thread(atspi.explore_pid, pid)
+    if raw.startswith("Error"):
+        screenshot = await _capture_window_screenshot(pid)
+        return {"pid": pid, "error": raw, **({"screenshot": screenshot} if screenshot else {})}
+    enriched = await atspi._enrich_window_tree(pid, raw)
+    if force_screenshot:
+        screenshot = await _capture_window_screenshot(pid)
+        return {"pid": pid, "tree": enriched, **({"screenshot": screenshot} if screenshot else {})}
+    return {"pid": pid, "tree": enriched}
+
+
+@router.get(
+    "/api/desktop/screenshot",
+    response_model=DesktopScreenshotResponse,
+    summary="Capture full desktop screenshot",
+    description="Returns a base64-encoded PNG screenshot of the entire desktop screen.",
+)
+async def desktop_screenshot():
+    resp = await _cu_action({"action": "screenshot"})
+    data = resp.get("data")
+    if not data:
+        raise HTTPException(status_code=500, detail="Screenshot failed")
+    return {"data": data}
+
+
+@router.get(
+    "/api/desktop/screenshot/{pid}",
+    response_model=WindowScreenshotResponse,
+    summary="Capture window screenshot",
+    description="Returns a base64-encoded PNG screenshot of a specific window's screen region.",
+)
+async def window_screenshot(pid: int):
+    screenshot = await _capture_window_screenshot(pid)
+    if not screenshot:
+        raise HTTPException(status_code=500, detail=f"Screenshot failed for PID {pid}")
+    return {"pid": pid, "screenshot": screenshot}
+
+
+@router.post(
+    "/api/desktop/control",
+    response_model=CUResponse,
+    summary="Send input command to desktop",
+    description="Send mouse, keyboard, scroll, or screenshot commands directly to the desktop "
+    "via the computer-use backend. All coordinate values are screen-absolute. ",
+)
+async def desktop_control(body: ControlRequest):
+    action = body.action
+    payload = body.model_dump(exclude_none=True)
+    if action not in (
+        "key", "type", "mouse_move", "left_click", "right_click",
+        "double_click", "middle_click", "triple_click",
+        "left_click_drag", "left_mouse_down", "left_mouse_up",
+        "scroll", "cursor_position", "hold_key", "wait", "screenshot", "zoom",
+    ):
+        raise HTTPException(status_code=400, detail=f"Unknown action: {action}")
+    try:
+        resp = await _cu_action(payload)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    return resp
+
+
+@router.post(
+    "/api/desktop/close/{pid}",
+    response_model=CloseResponse,
+    summary="Close a window",
+    description="Terminate a window's process by PID (sends SIGTERM).",
+)
+async def close_window(pid: int):
+    ok = await desktop.close_window(pid)
+    if not ok:
+        raise HTTPException(status_code=500, detail=f"Failed to close PID {pid}")
+    return {"ok": True, "pid": pid}
 
 
 @router.get("/")

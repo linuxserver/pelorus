@@ -3,7 +3,7 @@ import logging
 import os
 
 from . import atspi
-from . import kwin_dbus
+from . import desktop
 from .utils import _get_screen_size
 
 log = logging.getLogger(__name__)
@@ -40,13 +40,12 @@ async def _text_screenshot() -> str:
     screen_w, screen_h = await _get_screen_size()
 
     windows: list[dict] = []
-    if desktop_pid is not None:
-        try:
-            windows = await kwin_dbus.list_windows()
-        except Exception:
-            windows = []
+    try:
+        windows = await desktop.list_windows()
+    except Exception:
+        windows = []
 
-    env_name = os.getenv("PELORUS_ENVIRONMENT", "KDE Plasma Desktop (Linux)")
+    env_name = os.getenv("PELORUS_ENVIRONMENT", desktop.ENVIRONMENT)
     lines = [f"=== {env_name} — Desktop ({len(windows)} windows, {screen_w}x{screen_h}) ==="]
 
     if desktop_pid is not None:

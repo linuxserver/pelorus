@@ -5,7 +5,7 @@ import gi
 gi.require_version("Atspi", "2.0")
 from gi.repository import Atspi, GLib
 
-from . import kwin_dbus
+from . import desktop
 
 log = logging.getLogger(__name__)
 
@@ -171,11 +171,14 @@ def _get_frame_extents(pid: int) -> tuple:
     return (0, 0, 0, 0)
 
 
+def _is_absolute_coords(window: dict, atspi_frame_x: int, atspi_frame_y: int) -> bool:
+    wx, wy = window["x"], window["y"]
+    return (atspi_frame_x == wx and atspi_frame_y == wy)
+
+
 async def _enrich_window_tree(pid: int, raw_tree: str) -> str:
-    if _find_plasmashell_pid() is None:
-        return raw_tree
     try:
-        windows = await kwin_dbus.list_windows()
+        windows = await desktop.list_windows()
     except Exception:
         return raw_tree
 
@@ -201,6 +204,7 @@ async def _enrich_window_tree(pid: int, raw_tree: str) -> str:
         m = _COORD_RE.search(stripped)
         if not m:
             continue
+        atspi_x, atspi_y = int(m.group(1)), int(m.group(2))
         atspi_w, atspi_h = int(m.group(3)), int(m.group(4))
         if atspi_w == 0 or atspi_h == 0:
             continue
@@ -222,9 +226,14 @@ async def _enrich_window_tree(pid: int, raw_tree: str) -> str:
             continue
         matched_win_ids.add(id(matched))
 
-        titlebar = matched["height"] - atspi_h
-        if titlebar < 0:
+        absolute = _is_absolute_coords(matched, atspi_x, atspi_y)
+
+        if absolute:
             titlebar = 0
+        else:
+            titlebar = matched["height"] - atspi_h
+            if titlebar < 0:
+                titlebar = 0
 
         section_end = len(lines)
         for s in sections:
@@ -253,6 +262,7 @@ async def _enrich_window_tree(pid: int, raw_tree: str) -> str:
             "titlebar": titlebar,
             "padding_left": padding_left,
             "padding_top": padding_top,
+            "absolute": absolute,
         })
 
     if not sections:
@@ -265,11 +275,13 @@ async def _enrich_window_tree(pid: int, raw_tree: str) -> str:
     primary_titlebar = 0
     primary_padding_left = 0
     primary_padding_top = 0
+    primary_absolute = False
     for s in sections:
         if s["win"] is primary:
             primary_titlebar = s["titlebar"]
             primary_padding_left = s["padding_left"]
             primary_padding_top = s["padding_top"]
+            primary_absolute = s["absolute"]
             break
     else:
         for i, tl in enumerate(lines):
@@ -279,9 +291,12 @@ async def _enrich_window_tree(pid: int, raw_tree: str) -> str:
             m = _COORD_RE.search(stripped)
             if not m:
                 continue
+            atspi_x, atspi_y = int(m.group(1)), int(m.group(2))
             atspi_w, atspi_h = int(m.group(3)), int(m.group(4))
             if atspi_w == primary["width"] and atspi_h <= primary["height"]:
-                primary_titlebar = max(0, primary["height"] - atspi_h)
+                primary_absolute = _is_absolute_coords(primary, atspi_x, atspi_y)
+                if not primary_absolute:
+                    primary_titlebar = max(0, primary["height"] - atspi_h)
                 break
 
     result = []
@@ -297,21 +312,27 @@ async def _enrich_window_tree(pid: int, raw_tree: str) -> str:
             rx, ry, rw, rh = int(m.group(1)), int(m.group(2)), int(m.group(3)), int(m.group(4))
             if rw != 0 or rh != 0:
                 if section:
-                    wx, wy = section["win"]["x"], section["win"]["y"]
-                    if depths[i] >= 2:
-                        sx = wx + rx - section["padding_left"]
-                        sy = wy + section["titlebar"] + ry - section["padding_top"]
+                    if section["absolute"]:
+                        sx, sy = rx, ry
                     else:
-                        sx = wx + rx
-                        sy = wy + section["titlebar"] + ry
+                        wx, wy = section["win"]["x"], section["win"]["y"]
+                        if depths[i] >= 2:
+                            sx = wx + rx - section["padding_left"]
+                            sy = wy + section["titlebar"] + ry - section["padding_top"]
+                        else:
+                            sx = wx + rx
+                            sy = wy + section["titlebar"] + ry
                 else:
-                    wx, wy = primary["x"], primary["y"]
-                    if depths[i] >= 2:
-                        sx = wx + rx - primary_padding_left
-                        sy = wy + primary_titlebar + ry - primary_padding_top
+                    if primary_absolute:
+                        sx, sy = rx, ry
                     else:
-                        sx = wx + rx
-                        sy = wy + primary_titlebar + ry
+                        wx, wy = primary["x"], primary["y"]
+                        if depths[i] >= 2:
+                            sx = wx + rx - primary_padding_left
+                            sy = wy + primary_titlebar + ry - primary_padding_top
+                        else:
+                            sx = wx + rx
+                            sy = wy + primary_titlebar + ry
                 enriched = enriched[:m.start()] + f"\u2192 screen ({sx},{sy}) {rw}x{rh}"
         result.append(enriched)
 
@@ -448,9 +469,9 @@ def get_visible_popups(pid: int, screen_width: int = 2560, screen_height: int = 
 
 
 async def screen_coords(pid: int, element: dict) -> tuple[int, int] | None:
-    window = await kwin_dbus.get_window_by_pid(pid)
+    window = await desktop.get_window_by_pid(pid)
     if window is None:
-        log.error("No KWin window for PID %d", pid)
+        log.error("No window found for PID %d", pid)
         return None
 
     wx, wy, wh = window["x"], window["y"], window["height"]
@@ -459,17 +480,23 @@ async def screen_coords(pid: int, element: dict) -> tuple[int, int] | None:
 
     frame = _get_frame_extents(pid)
     if frame:
-        _, _, _, frame_h = frame
-        titlebar = wh - frame_h if frame_h > 0 else 0
+        fx, fy, frame_w, frame_h = frame
     else:
-        titlebar = 36
+        fx, fy, frame_w, frame_h = 0, 0, 0, 0
 
-    sx, sy = wx + ax, wy + titlebar + ay
+    if _is_absolute_coords(window, fx, fy):
+        sx, sy = ax, ay
+        titlebar = 0
+    else:
+        if frame_h > 0:
+            titlebar = wh - frame_h
+        else:
+            titlebar = 36
+        sx, sy = wx + ax, wy + titlebar + ay
 
     log.debug(
         "screen_coords PID=%d element=(%d,%d) window=(%d,%d) wh=%d frame_h=%d titlebar=%d -> (%d,%d)",
         pid, ax, ay, wx, wy, wh,
-        frame[3] if frame else 0,
-        titlebar, sx, sy,
+        frame_h, titlebar, sx, sy,
     )
     return sx, sy

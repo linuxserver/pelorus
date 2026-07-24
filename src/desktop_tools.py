@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from . import atspi
-from . import kwin_dbus
+from . import desktop
 from .state import _text_screenshot
 from .utils import _cu_action, _get_screen_size
 from .tools.base import ToolResult
@@ -29,7 +29,7 @@ class DesktopTool:
 
     async def _capture_window_region(self, pid: int) -> ToolResult | None:
         try:
-            windows = await kwin_dbus.list_windows()
+            windows = await desktop.list_windows()
         except Exception:
             return None
         pid_windows = [w for w in windows if w["pid"] == pid]
@@ -159,7 +159,7 @@ class DesktopTool:
             pid = kwargs.get("pid")
             if not pid:
                 return ToolResult(error="pid required for close_window")
-            ok = await kwin_dbus.close_window(int(pid))
+            ok = await desktop.close_window(int(pid))
             if ok:
                 return ToolResult(output=f"Window PID {pid} closed.")
             return ToolResult(output=f"Failed to close window for PID {pid}")

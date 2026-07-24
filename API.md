@@ -101,12 +101,208 @@ Full event reference:
 | `GET` | `/api/servers/{id}/models` | Fetch available models from a saved server's provider |
 | `POST` | `/api/models/fetch` | Fetch models from ad-hoc provider config |
 | `GET` | `/api/env` | Return first server's config for frontend pre-population |
-| `GET` | `/api/windows` | List KWin windows (debug, KDE only) |
+| `GET` | `/api/windows` | List windows |
 | `GET` | `/api/state` | Return the desktop state text sent to the LLM |
 | `WS` | `/ws` | WebSocket endpoint for browser UI (full-duplex agent interaction) |
 
 The server CRUD, model fetch, and WebSocket endpoints are used by the web frontend
 and are fully documented via the interactive `/docs` Swagger UI.
+
+---
+
+## Low-Level Desktop Integration
+
+These endpoints expose pelorus as a standalone desktop control API. External scripts,
+bots, or any HTTP client can read desktop state, explore windows, capture screenshots,
+and send input commands without going through the LLM agent loop.
+
+All coordinate values returned are **screen-absolute** -- ready to pass directly to
+the computer-use backend or any other click/input system.
+
+### GET /api/desktop/explore/{pid}
+
+Returns the AT-SPI accessibility tree for a window, enriched with screen-absolute
+coordinates. This is the same data the agent loop uses internally.
+
+If the window has no accessibility tree (games, Electron apps, custom GL canvases),
+a **base64 PNG screenshot of the window region is returned automatically**. The caller
+checks for the `screenshot` field to know if vision-based inspection is needed.
+
+**Query parameters:**
+
+| Param | Type | Default | Description |
+|---|---|---|---|
+| `force_screenshot` | `bool` | `false` | Always include a window screenshot alongside the tree |
+
+**Response (AT-SPI available):**
+
+```json
+{
+  "pid": 9728,
+  "tree": "[frame] \"Welcome — Kate\" (1297, 518, 688, 400)\n  [button] \"New File\" (1384, 644, 121, 25)\n  ..."
+}
+```
+
+**Response (AT-SPI unavailable — screenshot auto-included):**
+
+```json
+{
+  "pid": 9728,
+  "error": "Error: No AT-SPI application found for PID 9728",
+  "screenshot": "base64..."
+}
+```
+
+**Response (`force_screenshot=true`, AT-SPI available):**
+
+```json
+{
+  "pid": 9728,
+  "tree": "[frame] ...",
+  "screenshot": "base64..."
+}
+```
+
+```bash
+curl -s localhost:5100/api/desktop/explore/9728 | python3 -m json.tool
+```
+
+### GET /api/desktop/screenshot
+
+Returns a raw base64-encoded PNG screenshot of the full desktop.
+
+**Response:**
+
+```json
+{
+  "data": "base64..."
+}
+```
+
+```bash
+curl -s localhost:5100/api/desktop/screenshot | python3 -c "
+import sys, json, base64
+data = json.load(sys.stdin)['data']
+open('screen.png', 'wb').write(base64.b64decode(data))
+print('Saved screen.png')
+"
+```
+
+### GET /api/desktop/screenshot/{pid}
+
+Returns a base64-encoded PNG screenshot of a specific window's screen region.
+
+**Response:**
+
+```json
+{
+  "pid": 9728,
+  "screenshot": "base64..."
+}
+```
+
+```bash
+curl -s localhost:5100/api/desktop/screenshot/9728 | python3 -c "
+import sys, json, base64
+data = json.load(sys.stdin)['screenshot']
+open('kate.png', 'wb').write(base64.b64decode(data))
+print('Saved kate.png')
+"
+```
+
+### POST /api/desktop/control
+
+Send input commands directly to the desktop. This is a passthrough to the
+computer-use backend (PIXELFLUX_CU on port 5000).
+
+**Request body:**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `action` | `string` | yes | One of the actions listed below |
+| `coordinate` | `[int, int]` | for click/move | `[x, y]` screen position |
+| `text` | `string` | for key/type | Key name or text to type |
+| `start_coordinate` | `[int, int]` | for drag | `[x, y]` drag start |
+| `end_coordinate` | `[int, int]` | for drag | `[x, y]` drag end |
+| `scroll_direction` | `string` | for scroll | `"up"`, `"down"`, `"left"`, `"right"` |
+| `scroll_amount` | `int` | for scroll | Number of scroll units |
+| `duration` | `float` | for wait | Seconds to wait |
+| `region` | `[int, int, int, int]` | for zoom | `[x1, y1, x2, y2]` capture region |
+
+**Available actions:**
+
+| Action | Parameters | Description |
+|---|---|---|
+| `left_click` | `coordinate` | Click at screen position |
+| `right_click` | `coordinate` | Right-click at screen position |
+| `double_click` | `coordinate` | Double-click at screen position |
+| `middle_click` | `coordinate` | Middle-click at screen position |
+| `triple_click` | `coordinate` | Triple-click at screen position |
+| `mouse_move` | `coordinate` | Move cursor to position |
+| `left_mouse_down` | `coordinate` | Press left mouse button |
+| `left_mouse_up` | `coordinate` | Release left mouse button |
+| `left_click_drag` | `start_coordinate`, `end_coordinate` | Drag between two points |
+| `scroll` | `coordinate`, `scroll_direction`, `scroll_amount` | Scroll at position |
+| `key` | `text` | Press a key (e.g. `"Return"`, `"ctrl+a"`) |
+| `hold_key` | `text`, `duration` | Hold a key for duration |
+| `type` | `text` | Type a string of text |
+| `cursor_position` | - | Returns current cursor position |
+| `wait` | `duration` | Pause for N seconds |
+| `screenshot` | - | Capture full desktop screenshot |
+| `zoom` | `region` | Capture a specific screen region |
+
+**Response:** JSON passthrough from the CU backend, typically:
+
+```json
+{
+  "status": "ok",
+  "data": "base64..."
+}
+```
+
+```bash
+# Click at (500, 300)
+curl -s -X POST localhost:5100/api/desktop/control \
+  -H 'Content-Type: application/json' \
+  -d '{"action": "left_click", "coordinate": [500, 300]}'
+
+# Type text
+curl -s -X POST localhost:5100/api/desktop/control \
+  -H 'Content-Type: application/json' \
+  -d '{"action": "type", "text": "hello world"}'
+
+# Press Enter
+curl -s -X POST localhost:5100/api/desktop/control \
+  -H 'Content-Type: application/json' \
+  -d '{"action": "key", "text": "Return"}'
+```
+
+### POST /api/desktop/close/{pid}
+
+Terminate a window's process by PID (sends SIGTERM).
+
+**Response:**
+
+```json
+{
+  "ok": true,
+  "pid": 9728
+}
+```
+
+```bash
+curl -s -X POST localhost:5100/api/desktop/close/9728
+```
+
+### Typical workflow
+
+```
+1. GET  /api/state                         → see open windows and PIDs
+2. GET  /api/desktop/explore/{pid}         → get element tree with screen coords
+3. POST /api/desktop/control               → click/type/scroll using those coords
+4. GET  /api/desktop/explore/{pid}         → verify result, get next element
+5. POST /api/desktop/close/{pid}           → close when done
+```
 
 ---
 
