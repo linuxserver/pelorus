@@ -16,7 +16,7 @@ logging.basicConfig(
 )
 log = logging.getLogger("pelorus")
 
-app = FastAPI(title="Pelorus")
+app = FastAPI(title="Pelorus", root_path=os.getenv("ROOT_PATH", ""))
 
 if STATIC.is_dir():
     app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
@@ -34,7 +34,8 @@ async def shutdown():
 
 def main():
     port = int(os.getenv("PELORUS_PORT", "5100"))
-    uvicorn.run("src.app:app", host="0.0.0.0", port=port, log_level="info")
+    root_path = os.getenv("ROOT_PATH", "")
+    uvicorn.run("src.app:app", host="0.0.0.0", port=port, log_level="info", root_path=root_path)
 
 
 if __name__ == "__main__":

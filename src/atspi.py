@@ -216,8 +216,8 @@ async def _enrich_window_tree(pid: int, raw_tree: str) -> str:
         if atspi_name:
             for w in pid_windows:
                 title = w.get("title", "")
-                tn = re.sub(r'\s+', ' ', title).strip()
-                an = re.sub(r'\s+', ' ', atspi_name).strip()
+                tn = re.sub(r'\s+', ' ', re.sub(r'[^\w\s]', '', title)).strip()
+                an = re.sub(r'\s+', ' ', re.sub(r'[^\w\s]', '', atspi_name)).strip()
                 if tn == an or tn.startswith(an):
                     matched = w
                     break
