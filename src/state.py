@@ -45,7 +45,7 @@ async def _text_screenshot() -> str:
     except Exception:
         windows = []
 
-    env_name = os.getenv("PELORUS_ENVIRONMENT", desktop.ENVIRONMENT)
+    env_name = os.getenv("PELORUS_ENVIRONMENT", desktop._environment())
     lines = [f"=== {env_name} — Desktop ({len(windows)} windows, {screen_w}x{screen_h}) ==="]
 
     if desktop_pid is not None:
