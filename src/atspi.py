@@ -54,7 +54,7 @@ def _get_role(obj: Atspi.Accessible) -> str:
 def _get_states(obj: Atspi.Accessible) -> list[str]:
     try:
         state_set = obj.get_state_set()
-        return [s.name for s in state_set.get_states()]
+        return [s.value_name.replace("ATSPI_STATE_", "") for s in state_set.get_states()]
     except Exception:
         return []
 

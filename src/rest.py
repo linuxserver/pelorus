@@ -560,9 +560,9 @@ async def _capture_window_screenshot(pid: int) -> str | None:
 )
 async def explore_window(pid: int, force_screenshot: bool = False):
     raw = await asyncio.to_thread(atspi.explore_pid, pid)
-    if raw.startswith("Error"):
+    if raw.startswith("Error") or not raw.strip():
         screenshot = await _capture_window_screenshot(pid)
-        return {"pid": pid, "error": raw, **({"screenshot": screenshot} if screenshot else {})}
+        return {"pid": pid, "error": raw if raw.startswith("Error") else "Empty accessibility tree", **({"screenshot": screenshot} if screenshot else {})}
     enriched = await atspi._enrich_window_tree(pid, raw)
     if force_screenshot:
         screenshot = await _capture_window_screenshot(pid)
