@@ -776,7 +776,7 @@ function onDone(evt) {
     const box = document.createElement("div");
     box.className = "final-box";
     if (evt.final_text) {
-      box.innerHTML += `<div class="final-text">${escapeHtml(evt.final_text)}</div>`;
+      box.innerHTML += `<div class="final-text">${marked.parse(evt.final_text, { breaks: true })}</div>`;
     }
     if (evt.final_screenshot) {
       const imgSrc = `data:image/png;base64,${evt.final_screenshot}`;
