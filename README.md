@@ -52,6 +52,7 @@ Environment variables in TOML values are resolved via `${VAR_NAME}` syntax.
 |---|---|---|
 | `PELORUS_PORT` | `5100` | HTTP server port |
 | `PIXELFLUX_CU` | `5000` | Computer-use backend port |
+| `PIXELFLUX_CU_TOKEN` | unset | Bearer token the computer-use backend requires on every request, sent as `Authorization: Bearer` |
 | `PELORUS_PROVIDER` | `ollama` | Provider for config seed |
 | `PELORUS_ENDPOINT` | `http://localhost:11434` | Endpoint for config seed |
 | `PELORUS_MODEL` | `gemma4:12b` | Model for config seed |

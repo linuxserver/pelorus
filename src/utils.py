@@ -16,7 +16,11 @@ log = logging.getLogger(__name__)
 CU_HOST = "127.0.0.1"
 CU_PORT = os.getenv("PIXELFLUX_CU", "5000")
 CU_URL = f"http://{CU_HOST}:{CU_PORT}/computer-use"
-_cu_client = httpx.AsyncClient(timeout=30.0)
+CU_TOKEN = os.getenv("PIXELFLUX_CU_TOKEN", "")
+_cu_client = httpx.AsyncClient(
+    timeout=30.0,
+    headers={"Authorization": f"Bearer {CU_TOKEN}"} if CU_TOKEN else None,
+)
 
 _screen_size: tuple[int, int] | None = None
 
